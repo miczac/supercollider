@@ -400,13 +400,23 @@ next_token : {
     if (code_point == '$') {
         if (stream.peek() == '\\') {
             stream.advance(); // consume '\'
-            stream.advance(); // consume whatever happens after it.
-            return_orelse_next_token(action.template process<TokenType::Ascii>({ token_start, stream.end_token() }));
         }
 
-        stream.advance(); // consume whatever character comes after the '$'
-
-        return_orelse_next_token(action.template process<TokenType::Ascii>({ token_start, stream.end_token() }));
+        const auto p = stream.peek();
+        // When you have `$ ` or `$\ ` it is important the whitespace is unambiguous.
+        // Here we enforce that the only whitespace character allowed is the ascii space.
+        if (is_whitespace(p) && p != ' ') {
+            return_orelse_next_token(
+                action.template process<TokenType::ErASCIIInvalidWhitespace>({ token_start, stream.end_token() }));
+        } else if (p == 0) { // end of file
+            return_orelse_next_token(
+                action.template process<TokenType::ErASCIIEOF>({ token_start, stream.end_token() }));
+        } else if (auto c = stream.advance(); c > 0 && c < 128) {
+            return_orelse_next_token(action.template process<TokenType::Ascii>({ token_start, stream.end_token() }));
+        } else {
+            return_orelse_next_token(
+                action.template process<TokenType::ErASCIINotASCII>({ token_start, stream.end_token() }));
+        }
     }
 
     if (is_starting_identifier(code_point) || code_point == '_')
